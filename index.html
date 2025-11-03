@@ -1,25 +1,30 @@
 <!doctype html>
 <html lang="ko">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>스마트폰 기종확인</title>
   <style>
-    body{font-family:system-ui,-apple-system,Segoe UI,Arial,sans-serif;margin:0;padding:24px;line-height:1.45;background:#fafafa;}
-    .card{max-width:720px;margin:0 auto;background:#fff;border:1px solid #ddd;border-radius:12px;padding:24px;}
-    h1{margin:0 0 8px;}
-    .muted{color:#666;font-size:14px;margin-bottom:16px;}
-    .kv{display:grid;grid-template-columns:120px 1fr;gap:6px;font-size:15px;}
-    .result{font-size:28px;font-weight:700;margin:20px 0;}
-    button{font-size:16px;padding:10px 14px;border-radius:10px;border:1px solid #ccc;background:#fff;cursor:pointer;}
-    button.primary{border-color:#222;}
-    .badge{display:inline-block;padding:2px 8px;border:1px solid #bbb;border-radius:999px;font-size:12px;color:#444;margin-left:6px;}
+    :root { color-scheme: light; }
+    body { font-family: system-ui,-apple-system,Segoe UI,Arial,sans-serif; margin:0; padding:24px; background:#fafafa; line-height:1.45; }
+    .card { max-width:760px; margin:0 auto; background:#fff; border:1px solid #ddd; border-radius:12px; padding:24px; }
+    h1 { margin:0 0 8px; }
+    .muted { color:#666; font-size:14px; margin-bottom:16px; }
+    .kv { display:grid; grid-template-columns:120px 1fr; gap:6px; font-size:15px; margin-bottom:8px; }
+    .result { font-size:28px; font-weight:700; margin:20px 0; }
+    button { font-size:16px; padding:10px 14px; border-radius:10px; border:1px solid #ccc; background:#fff; cursor:pointer; }
+    button.primary { border-color:#222; }
+    .badge { display:inline-block; padding:2px 8px; border:1px solid #bbb; border-radius:999px; font-size:12px; color:#444; margin-left:6px; }
+    .iosbox { margin-top:16px; padding:12px; border:1px dashed #bbb; border-radius:10px; background:#fcfcfc; }
+    .row { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+    input[type=text] { flex:1; min-width:220px; padding:10px 12px; border:1px solid #ccc; border-radius:10px; font-size:16px; }
+    .hint { font-size:13px; color:#555; margin-top:6px; }
   </style>
 </head>
 <body>
   <div class="card">
     <h1>기종확인</h1>
-    <div class="muted">QR 촬영 후 자동으로 기종이 표시됩니다.</div>
+    <div class="muted">Android는 QR만으로 자동 인식. iPhone은 아래 입력으로 확정.</div>
 
     <div class="kv">
       <div>브랜드</div><div id="brand">-</div>
@@ -32,10 +37,20 @@
 
     <button class="primary" id="detectBtn">기종확인 다시 실행</button>
     <span class="badge" id="accuracyBadge">자동판별</span>
+
+    <div id="iosBox" class="iosbox" style="display:none;">
+      <div><strong>iPhone은 브라우저가 정확 모델을 제공하지 않습니다.</strong> 아래 중 하나를 입력 후 <em>확인</em>을 누르세요.</div>
+      <div class="hint">입력 예시: <code>iPhone17,1</code> 또는 <code>iPhone 15 Pro</code> (경로: 설정 → 일반 → 정보)</div>
+      <div class="row">
+        <input type="text" id="iosInput" placeholder="예: iPhone17,1  또는  iPhone 15 Pro" />
+        <button id="iosConfirm">확인</button>
+      </div>
+      <div id="iosMsg" class="hint"></div>
+    </div>
   </div>
 
   <script>
-    // 삼성 최신 모델 매핑
+    // ── Samsung 모델 매핑 (S22~S25, Z Fold/Flip 3~7)
     const samsungModels = {
       "SM-S938": "Galaxy S25 Ultra",
       "SM-S936": "Galaxy S25+",
@@ -59,109 +74,151 @@
       "SM-F711": "Galaxy Z Flip3"
     };
 
-    // iPhone 전체 시리즈 (12~17)
-    const iPhoneMap = {
-      // iPhone 17 시리즈
-      "iPhone18,2": "iPhone 17 Pro Max",
-      "iPhone18,1": "iPhone 17 Pro",
-      "iPhone18,3": "iPhone 17",
-      "iPhone18,4": "iPhone 17 Air",
-      // iPhone 16 시리즈
-      "iPhone17,5": "iPhone 16e",
-      "iPhone17,2": "iPhone 16 Pro Max",
-      "iPhone17,1": "iPhone 16 Pro",
-      "iPhone17,4": "iPhone 16 Plus",
-      "iPhone17,3": "iPhone 16",
-      // iPhone 15 시리즈
-      "iPhone16,2": "iPhone 15 Plus",
-      "iPhone16,1": "iPhone 15",
-      "iPhone17,1": "iPhone 15 Pro",  // 일부 iOS 식별자 중복 케이스
-      "iPhone17,2": "iPhone 15 Pro Max",
-      // iPhone 14 시리즈
-      "iPhone15,3": "iPhone 14 Pro Max",
-      "iPhone15,2": "iPhone 14 Pro",
-      "iPhone14,8": "iPhone 14 Plus",
-      "iPhone14,7": "iPhone 14",
-      // iPhone 13 시리즈
-      "iPhone14,5": "iPhone 13",
-      "iPhone14,2": "iPhone 13 Pro",
-      "iPhone14,3": "iPhone 13 Pro Max",
-      "iPhone14,4": "iPhone 13 mini",
-      // iPhone 12 시리즈
-      "iPhone13,2": "iPhone 12",
-      "iPhone13,3": "iPhone 12 Pro",
-      "iPhone13,4": "iPhone 12 Pro Max",
-      "iPhone13,1": "iPhone 12 mini"
+    // ── iPhone 모델 매핑 (12~17)
+    const iPhoneById = {
+      // 17
+      "iPhone18,2":"iPhone 17 Pro Max","iPhone18,1":"iPhone 17 Pro","iPhone18,3":"iPhone 17","iPhone18,4":"iPhone 17 Air",
+      // 16
+      "iPhone17,2":"iPhone 16 Pro Max","iPhone17,1":"iPhone 16 Pro","iPhone17,4":"iPhone 16 Plus","iPhone17,3":"iPhone 16","iPhone17,5":"iPhone 16e",
+      // 15
+      "iPhone17,2":"iPhone 15 Pro Max","iPhone17,1":"iPhone 15 Pro","iPhone16,2":"iPhone 15 Plus","iPhone16,1":"iPhone 15",
+      // 14
+      "iPhone15,3":"iPhone 14 Pro Max","iPhone15,2":"iPhone 14 Pro","iPhone14,8":"iPhone 14 Plus","iPhone14,7":"iPhone 14",
+      // 13
+      "iPhone14,3":"iPhone 13 Pro Max","iPhone14,2":"iPhone 13 Pro","iPhone14,5":"iPhone 13","iPhone14,4":"iPhone 13 mini",
+      // 12
+      "iPhone13,4":"iPhone 12 Pro Max","iPhone13,3":"iPhone 12 Pro","iPhone13,2":"iPhone 12","iPhone13,1":"iPhone 12 mini"
     };
 
-    function getParam(name){return new URLSearchParams(location.search).get(name)||"";}
+    // 마케팅명 정규화 비교용
+    const iPhoneNames = Object.values(iPhoneById).reduce((set, name) => (set.add(name), set), new Set());
+    const normalizeName = (s) => s.replace(/\s+/g,'').toLowerCase();
+
+    const getParam = (k) => new URLSearchParams(location.search).get(k) || "";
 
     async function detect(){
-      const brandEl=document.getElementById('brand');
-      const modelEl=document.getElementById('model');
-      const osEl=document.getElementById('os');
-      const browserEl=document.getElementById('browser');
-      const headlineEl=document.getElementById('headline');
-      const badge=document.getElementById('accuracyBadge');
+      const brandEl = document.getElementById('brand');
+      const modelEl = document.getElementById('model');
+      const osEl = document.getElementById('os');
+      const browserEl = document.getElementById('browser');
+      const headlineEl = document.getElementById('headline');
+      const badge = document.getElementById('accuracyBadge');
+      const iosBox = document.getElementById('iosBox');
 
-      let ua=navigator.userAgent||"";
-      let brand="",model="",os="",browser="";
+      const ua = navigator.userAgent || "";
+      let brand = "", model = "", os = "", browser = "";
 
       // 브라우저 추정
-      if(/Edg\//.test(ua))browser="Edge";
-      else if(/Chrome\//.test(ua))browser="Chrome";
-      else if(/Firefox\//.test(ua))browser="Firefox";
-      else if(/Safari\//.test(ua)&&!/Chrome\//.test(ua))browser="Safari";
-      else browser="기타";
+      if (/Edg\//.test(ua)) browser = "Edge";
+      else if (/Chrome\//.test(ua)) browser = "Chrome";
+      else if (/Firefox\//.test(ua)) browser = "Firefox";
+      else if (/Safari\//.test(ua) && !/Chrome\//.test(ua)) browser = "Safari";
+      else browser = "기타";
 
-      const isAndroid=/Android/i.test(ua);
-      const isIOS=/iPhone|iPad|iPod/i.test(ua);
+      const isAndroid = /Android/i.test(ua);
+      const isIOS = /iPhone|iPad|iPod/i.test(ua);
 
-      // UA-CH 모델 정보 시도
-      try{
-        if(navigator.userAgentData&&navigator.userAgentData.getHighEntropyValues){
-          const high=await navigator.userAgentData.getHighEntropyValues(["platform","platformVersion","model"]);
-          if(high.model)model=high.model;
-          if(high.platform&&/Android/i.test(high.platform))brand="Samsung";
+      // UA-CH(가능 시)에서 모델/OS 보강
+      try {
+        if (navigator.userAgentData && navigator.userAgentData.getHighEntropyValues) {
+          const high = await navigator.userAgentData.getHighEntropyValues(["platform","platformVersion","model"]);
+          if (high.model) model = high.model;
+          if (high.platform && /Android/i.test(high.platform)) {
+            brand = "Samsung";
+            if (high.platformVersion) os = `Android ${high.platformVersion}`;
+          }
         }
-      }catch(e){}
+      } catch(e) {}
 
-      if(isAndroid){
-        brand=brand||"Samsung";
-        if(!model){
-          const m=ua.match(/;\s?([A-Za-z0-9\-_ ]+)\sBuild\//);
-          if(m)model=m[1].trim();
+      if (isAndroid) {
+        brand = brand || "Samsung";
+        if (!model) {
+          const m = ua.match(/;\s?([A-Za-z0-9\-_ ]+)\sBuild\//);
+          if (m) model = m[1].trim();
         }
-        for(const prefix in samsungModels){
-          if(model.startsWith(prefix)){model=samsungModels[prefix];break;}
+        for (const prefix in samsungModels) {
+          if (model && model.startsWith(prefix)) { model = samsungModels[prefix]; break; }
         }
-        const ver=ua.match(/Android\s([\d\.]+)/);
-        if(ver)os=`Android ${ver[1]}`;
-      }else if(isIOS){
-        brand="Apple";
-        const m=ua.match(/OS\s([\d_]+)/);
-        if(m)os=`iOS ${m[1].replace(/_/g,".")}`;
-        model="iPhone";
-        badge.textContent="자동(제한됨)";
+        if (!os) {
+          const ver = ua.match(/Android\s([\d\.]+)/);
+          if (ver) os = `Android ${ver[1]}`;
+        }
+        iosBox.style.display = 'none';
+        badge.textContent = '자동판별';
+      } else if (isIOS) {
+        brand = "Apple";
+        const m = ua.match(/OS\s([\d_]+)/);
+        if (m) os = `iOS ${m[1].replace(/_/g,'.')}`;
+        model = "iPhone";
+        iosBox.style.display = 'block';
+        badge.textContent = '자동(제한됨)';
       }
 
-      // identifier 우선 적용
-      const id=getParam("identifier");
-      if(id&&iPhoneMap[id]){
-        brand="Apple";
-        model=iPhoneMap[id];
-        os="iOS";
-        badge.textContent="확정(단축어)";
+      // ?identifier= 우선 적용 (단축어/앱에서 전달된 경우)
+      const id = getParam('identifier');
+      if (id) {
+        const mapped = iPhoneById[id];
+        brand = "Apple";
+        model = mapped || id;
+        os = os || "iOS";
+        iosBox.style.display = 'none';
+        badge.textContent = '확정(식별자)';
       }
 
-      brandEl.textContent=brand||"-";
-      modelEl.textContent=model||"-";
-      osEl.textContent=os||"-";
-      browserEl.textContent=browser;
-      headlineEl.textContent=[brand,model].filter(Boolean).join(" ");
+      brandEl.textContent = brand || '-';
+      modelEl.textContent = model || '-';
+      osEl.textContent = os || '-';
+      browserEl.textContent = browser;
+      headlineEl.textContent = [brand, model].filter(Boolean).join(' ');
     }
 
-    document.getElementById("detectBtn").addEventListener("click",detect);
+    // iPhone 수동 입력 처리
+    document.addEventListener('DOMContentLoaded', () => {
+      const input = document.getElementById('iosInput');
+      const msg = document.getElementById('iosMsg');
+
+      document.getElementById('iosConfirm').addEventListener('click', () => {
+        const vRaw = (input.value || '').trim();
+        if (!vRaw) { msg.textContent = '값을 입력하세요.'; return; }
+
+        // 1) 식별자 패턴 iPhoneNN,N
+        if (/^iPhone\d{1,2},\d+$/.test(vRaw)) {
+          const name = iPhoneById[vRaw];
+          if (name) {
+            setIOSResult(name);
+            msg.textContent = '';
+          } else {
+            msg.textContent = '식별자 미매핑: 최신 기종일 수 있습니다.';
+          }
+          return;
+        }
+
+        // 2) 마케팅명(공백/대소문자 무시)으로 정합
+        const norm = vRaw.toLowerCase().startsWith('iphone') ? vRaw : ('iPhone ' + vRaw);
+        const needle = normalizeName(norm);
+        let hit = null;
+        for (const name of iPhoneNames) {
+          if (normalizeName(name) === needle) { hit = name; break; }
+        }
+        if (hit) {
+          setIOSResult(hit);
+          msg.textContent = '';
+        } else {
+          msg.textContent = '형식: iPhone17,1  또는  iPhone 15 Pro';
+        }
+      });
+
+      function setIOSResult(name) {
+        document.getElementById('brand').textContent = 'Apple';
+        document.getElementById('model').textContent = name;
+        document.getElementById('os').textContent = 'iOS';
+        document.getElementById('headline').textContent = `Apple ${name}`;
+        document.getElementById('accuracyBadge').textContent = '확정(입력)';
+        document.getElementById('iosBox').style.display = 'none';
+      }
+    });
+
+    document.getElementById('detectBtn').addEventListener('click', detect);
     detect();
   </script>
 </body>
