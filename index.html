@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>스마트폰 기종확인</title>
+  <style>
+    :root { color-scheme: light; }
+    body {font-family: system-ui, -apple-system, Segoe UI, Arial, sans-serif; margin: 0; padding: 24px; line-height: 1.45; background:#fafafa;}
+    .card {max-width: 720px; margin: 0 auto; background: #fff; border: 1px solid #ddd; border-radius: 12px; padding: 24px;}
+    h1 {margin: 0 0 8px;}
+    .muted {color: #666; font-size: 14px; margin-bottom: 16px;}
+    .kv {display: grid; grid-template-columns: 120px 1fr; gap: 6px; font-size: 15px;}
+    .result {font-size: 28px; font-weight: 700; margin: 20px 0;}
+    button {font-size: 16px; padding: 10px 14px; border-radius: 10px; border: 1px solid #ccc; background: #fff; cursor: pointer;}
+    button.primary {border-color: #222;}
+    .badge {display: inline-block; padding: 2px 8px; border: 1px solid #bbb; border-radius: 999px; font-size: 12px; color: #444; margin-left: 6px;}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>기종확인</h1>
+    <div class="muted">QR 촬영 후 자동으로 기종이 표시됩니다.</div>
+
+    <div class="kv">
+      <div>브랜드</div><div id="brand">-</div>
+      <div>모델</div><div id="model">-</div>
+      <div>OS</div><div id="os">-</div>
+      <div>브라우저</div><div id="browser">-</div>
+    </div>
+
+    <div class="result" id="headline">확인 중...</div>
+
+    <button class="primary" id="detectBtn">기종확인 다시 실행</button>
+    <span class="badge" id="accuracyBadge">자동판별</span>
+  </div>
+
+  <script>
+    // 삼성 코드명 → 모델명 매핑 (출시 전 예상 코드는 가드 역할)
+    const samsungModels = {
+      "SM-S938": "Galaxy S25 Ultra",
+      "SM-S936": "Galaxy S25+",
+      "SM-S931": "Galaxy S25",
+      "SM-S928": "Galaxy S24 Ultra",
+      "SM-S926": "Galaxy S24+",
+      "SM-S921": "Galaxy S24",
+      "SM-S918": "Galaxy S23 Ultra",
+      "SM-S916": "Galaxy S23+",
+      "SM-S911": "Galaxy S23",
+      "SM-S908": "Galaxy S22 Ultra",
+      "SM-S906": "Galaxy S22+",
+      "SM-S901": "Galaxy S22",
+      "SM-F951": "Galaxy Z Fold7",
+      "SM-F751": "Galaxy Z Flip7",
+      "SM-F946": "Galaxy Z Fold5",
+      "SM-F741": "Galaxy Z Flip5",
+      "SM-F936": "Galaxy Z Fold4",
+      "SM-F731": "Galaxy Z Flip4",
+      "SM-F926": "Galaxy Z Fold3",
+      "SM-F711": "Galaxy Z Flip3"
+    };
+
+    // iPhone 식별자 → 모델명 매핑
+    const iPhoneMap = {
+      "iPhone19,1": "iPhone 16 Pro",
+      "iPhone19,2": "iPhone 16 Pro Max",
+      "iPhone18,1": "iPhone 16",
+      "iPhone18,2": "iPhone 16 Plus",
+      "iPhone17,1": "iPhone 15 Pro",
+      "iPhone17,2": "iPhone 15 Pro Max",
+      "iPhone16,1": "iPhone 15",
+      "iPhone16,2": "iPhone 15 Plus"
+    };
+
+    function getParam(name){
+      return new URLSearchParams(location.search).get(name) || "";
+    }
+
+    async function detect() {
+      const brandEl = document.getElementById('brand');
+      const modelEl = document.getElementById('model');
+      const osEl = document.getElementById('os');
+      const browserEl = document.getElementById('browser');
+      const headlineEl = document.getElementById('headline');
+      const badge = document.getElementById('accuracyBadge');
+
+      let ua = navigator.userAgent || "";
+      let brand = "";
+      let model = "";
+      let os = "";
+      let browser = "";
+
+      // 브라우저 추정
+      if (/Edg\//.test(ua)) browser = "Edge";
+      else if (/Chrome\//.test(ua)) browser = "Chrome";
+      else if (/Firefox\//.test(ua)) browser = "Firefox";
+      else if (/Safari\//.test(ua) && !/Chrome\//.test(ua)) browser = "Safari";
+      else browser = "기타";
+
+      const isAndroid = /Android/i.test(ua);
+      const isIOS = /iPhone|iPad|iPod/i.test(ua);
+
+      // UA-CH 모델 정보 시도 (크로뮴 기반)
+      try {
+        if (navigator.userAgentData && navigator.userAgentData.getHighEntropyValues) {
+          const high = await navigator.userAgentData.getHighEntropyValues(["platform","platformVersion","model","fullVersionList"]);
+          if (high.platform) {
+            if (/Android/i.test(high.platform)) brand = "Android";
+            else if (/Windows/i.test(high.platform)) brand = "Windows";
+            else if (/Chrome OS/i.test(high.platform)) brand = "ChromeOS";
+            else if (/macOS/i.test(high.platform)) brand = "Apple";
+            else brand = high.platform;
+          }
+          if (isAndroid && high.platformVersion) os = `Android ${high.platformVersion}`;
+          if (high.model) model = high.model; // 다수 안드로이드에서 기종 노출
+        }
+      } catch(e) { /* 무시 */ }
+
+      if (isAndroid) {
+        brand = brand || "Android";
+        // UA에서 모델 보정
+        if (!model) {
+          const m = ua.match(/;\s?([A-Za-z0-9\-_ ]+)\sBuild\//);
+          if (m) model = m[1].trim();
+        }
+        // 삼성 모델 매핑
+        if (model) {
+          for (const prefix in samsungModels) {
+            if (model.startsWith(prefix)) {
+              brand = "Samsung";
+              model = samsungModels[prefix];
+              break;
+            }
+          }
+        }
+        if (!os) {
+          const ver = ua.match(/Android\s([\d\.]+)/);
+          if (ver) os = `Android ${ver[1]}`;
+        }
+      } else if (isIOS) {
+        brand = "Apple";
+        // iOS 버전
+        const m = ua.match(/OS\s([\d_]+)/);
+        if (m) os = `iOS ${m[1].replace(/_/g,".")}`;
+        // 기본 모델명은 iPhone
+        model = "iPhone";
+        badge.textContent = "자동(제한됨)";
+      }
+
+      // 단축어 파라미터 우선 적용
+      const id = getParam("identifier");
+      if (id) {
+        brand = "Apple";
+        model = iPhoneMap[id] || id; // 매핑 없으면 식별자 그대로
+        os = "iOS";
+        badge.textContent = "확정(단축어)";
+      }
+
+      // 출력
+      brandEl.textContent = brand || "-";
+      modelEl.textContent = model || "-";
+      osEl.textContent = os || "-";
+      browserEl.textContent = browser;
+      headlineEl.textContent = [brand, model].filter(Boolean).join(" ");
+    }
+
+    document.getElementById("detectBtn").addEventListener("click", detect);
+    detect();
+  </script>
+</body>
+</html>
